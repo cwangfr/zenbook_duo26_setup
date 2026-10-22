@@ -1,0 +1,28 @@
+{
+  "recorded_at": "2026-10-22",
+  "runtime": {
+    "repository": "https://github.com/therealarnold666/zenbook-duo26-Ubuntu26.04",
+    "commit": "e0b11760ad23898761e7acedd322dc412ced604a",
+    "directory": "zenbook-duo26-Ubuntu26.04",
+    "reason": "Includes the locale-independent session-agent fix verified in this conversation."
+  },
+  "xe_patches": {
+    "repository": "https://github.com/burakgon/zenbook-duo-2026-linux",
+    "commit": "cc65948bfb921483336d7174b7ef4afce8e3431f",
+    "directory": "zenbook-duo-2026-linux",
+    "path": "modules/display-edp2-tcss/dkms"
+  },
+  "comparison_only": {
+    "repository": "https://github.com/zakstam/zenbook-duo-linux",
+    "reviewed_commit": "7573a35a490050959bc0f1446160fe1896c84b4c",
+    "install": false
+  },
+  "kernel": {
+    "release": "7.0.0-38-generic",
+    "ubuntu_source_package": "linux-source-7.0.0",
+    "ubuntu_source_version": "7.0.0-38.38",
+    "xe_dkms_name": "zenbook-duo-xe-ubuntu",
+    "xe_dkms_version": "1.3.0-u70038",
+    "automatic_new_abi_support": false
+  }
+}

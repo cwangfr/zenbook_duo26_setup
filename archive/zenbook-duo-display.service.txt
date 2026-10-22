@@ -1,0 +1,11 @@
+# DEPRECATED. Historical user service; not installed by this repository.
+[Unit]
+Description=Zenbook Duo automatic display switching
+After=graphical-session.target
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/zenbook-duo-display.sh
+Restart=on-failure
+RestartSec=3
+[Install]
+WantedBy=graphical-session.target

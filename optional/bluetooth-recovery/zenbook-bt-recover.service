@@ -1,0 +1,13 @@
+[Unit]
+Description=Zenbook Duo conditional Intel PCIe Bluetooth boot recovery
+Documentation=https://bugs.launchpad.net/bugs/2170908
+Wants=bluetooth.service
+After=bluetooth.service
+ConditionPathExists=/sys/bus/pci/devices/0000:00:14.7
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/zenbook-bt-recover
+TimeoutStartSec=55
+# Deliberately do not retry automatically.
+RemainAfterExit=no

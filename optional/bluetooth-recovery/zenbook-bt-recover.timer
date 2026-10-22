@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Zenbook Duo Intel Bluetooth once after boot
+
+[Timer]
+OnBootSec=25s
+AccuracySec=1s
+Unit=zenbook-bt-recover.service
+
+[Install]
+WantedBy=timers.target

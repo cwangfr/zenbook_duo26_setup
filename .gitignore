@@ -1,0 +1,19 @@
+# Private machine data must never be committed.
+private/
+backups/
+logs/
+*.priv
+*.key
+MOK.*
+*.pem
+*.der
+*.deb
+*.ko
+*.ko.zst
+*.ko.xz
+initrd*
+vmlinuz*
+*.bundle
+target/
+__pycache__/
+*.pyc

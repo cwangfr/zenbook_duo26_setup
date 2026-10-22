@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# DEPRECATED: early conversation helper. Do not run alongside Rust runtime.
+keyboard_state() {
+    if lsusb -d 0b05:1cd7 | grep -q .; then echo docked; else echo detached; fi
+}
+bottom_active() {
+    for f in /sys/class/drm/card*-eDP-2/enabled; do
+        [ -r "$f" ] || continue
+        [ "$(cat "$f")" = enabled ] && return 0
+    done
+    return 1
+}
+single_screen() {
+    timeout 12 gdctl set --logical-monitor --primary --monitor eDP-1 --transform 180 --scale 1.66
+}
+dual_screen() {
+    timeout 12 gdctl set --logical-monitor --primary --monitor eDP-1 --transform 180 --scale 1.66 \
+        --logical-monitor --monitor eDP-2 --below eDP-1 --scale 1.66
+}
+safe=0
+if [ "$(keyboard_state)" = detached ] && bottom_active; then safe=1; fi
+previous=""
+while true; do
+    current=$(keyboard_state)
+    sleep 1
+    [ "$current" = "$(keyboard_state)" ] || continue
+    if [ "$current" != "$previous" ]; then
+        if [ "$current" = docked ]; then
+            if single_screen; then previous=docked; fi
+        elif [ "$safe" = 1 ]; then
+            if dual_screen; then previous=detached; fi
+        else
+            echo "Safety: lower screen activation blocked"
+            previous=detached
+        fi
+    fi
+    sleep 2
+done

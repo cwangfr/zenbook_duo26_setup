@@ -1,0 +1,13 @@
+2026-10-22, packaging-only local checks, not target hardware testing.
+Command: bash scripts/test-static.sh
+
+test_bluetooth_package_is_conditional (__main__.ScriptTests.test_bluetooth_package_is_conditional) ... ok
+test_help_is_read_only (__main__.ScriptTests.test_help_is_read_only) ... ok
+test_no_automatic_reboot (__main__.ScriptTests.test_no_automatic_reboot) ... ok
+test_no_private_key_material (__main__.ScriptTests.test_no_private_key_material) ... ok
+test_original_attachments (__main__.ScriptTests.test_original_attachments) ... ok
+test_xe_wrapper_is_pinned_and_no_gdm (__main__.ScriptTests.test_xe_wrapper_is_pinned_and_no_gdm) ... ok
+
+Ran 6 tests in 0.016s
+OK
+Static checks passed. No kernel build, hardware test or service deployment was performed.

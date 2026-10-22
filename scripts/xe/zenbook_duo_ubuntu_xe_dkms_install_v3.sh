@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# UX8407AA / Ubuntu 26.04.1 / 7.0.0-38-generic
+# Install ONLY the display-edp2-tcss xe.ko DKMS override. Never runs the Arch duo installer.
+# This Ubuntu port has NOT been validated on this specific Ubuntu kernel; any mismatch fails closed.
+set -Eeuo pipefail
+
+KREL="$(uname -r)"
+NAME=zenbook-duo-xe-ubuntu
+VER=1.3.0-u70038
+SRC_VERSION=7.0.0-38.38
+INSTALL_DIR="/usr/src/${NAME}-${VER}"
+SOURCE_TAR=/usr/src/linux-source-7.0.0.tar.bz2
+REPO="$HOME/zenbook-duo-2026-linux"
+ADDED=0
+INITRD_TOUCHED=0
+
+cleanup() {
+    local code=$?
+    trap - EXIT
+    if (( code != 0 )); then
+        echo >&2 "Installation aborted (exit $code). Removing this DKMS override if added."
+        if (( ADDED )); then
+            sudo dkms remove -m "$NAME" -v "$VER" --all >/dev/null 2>&1 || true
+            sudo rm -rf "$INSTALL_DIR"
+            sudo depmod -a "$KREL" || true
+        fi
+        if (( INITRD_TOUCHED )); then
+            sudo update-initramfs -u -k "$KREL" || true
+        fi
+        echo >&2 "Do NOT reboot to test the patch: no validated Xe override was installed."
+    fi
+    exit "$code"
+}
+trap cleanup EXIT
+
+[[ $KREL == 7.0.0-38-generic ]] || { echo "Unsupported kernel: $KREL" >&2; exit 1; }
+[[ $(cat /sys/class/dmi/id/sys_vendor) == ASUS ]] || { echo 'Not ASUS' >&2; exit 1; }
+[[ $(cat /sys/class/dmi/id/product_name) == 'Zenbook Duo UX8407AA' ]] || { echo 'Not UX8407AA' >&2; exit 1; }
+[[ -f /boot/initrd.img-$KREL ]] || { echo 'No current initramfs' >&2; exit 1; }
+[[ $(find /boot -maxdepth 1 -name 'vmlinuz-*' -type f | wc -l) -ge 2 ]] || {
+    echo 'Refusing: no second installed kernel as a GRUB fallback.' >&2
+    echo 'Install/retain another stock Ubuntu kernel before running this installer.' >&2
+    exit 1
+}
+if dkms status -m "$NAME" 2>/dev/null | grep -q "$VER"; then
+    echo 'This module already exists in DKMS; no changes made.' >&2
+    exit 1
+fi
+if [[ -e $INSTALL_DIR ]]; then
+    echo "$INSTALL_DIR already exists; no changes made." >&2
+    exit 1
+fi
+
+sudo apt-get update
+sudo apt-get install -y git dkms patch build-essential bzip2 dwarves bc flex bison libelf-dev libssl-dev \
+  "linux-headers-$KREL" "linux-source-7.0.0=$SRC_VERSION" mokutil
+[[ $(dpkg-query -W -f='${Version}' linux-source-7.0.0) == "$SRC_VERSION" ]] || {
+    echo 'Ubuntu source package version does not match running kernel.' >&2; exit 1;
+}
+[[ -f "$SOURCE_TAR" ]] || { echo "Missing $SOURCE_TAR" >&2; exit 1; }
+if grep -q '^CONFIG_CC_IS_CLANG=y' "/lib/modules/$KREL/build/.config"; then
+    sudo apt-get install -y clang llvm lld
+fi
+
+if mokutil --sb-state | grep -qi 'SecureBoot enabled'; then
+    [[ -f /var/lib/shim-signed/mok/MOK.der && -f /var/lib/shim-signed/mok/MOK.priv ]] || {
+        echo 'No DKMS signing key: refusing to install an unsigned Xe driver.' >&2; exit 1;
+    }
+    # Do not trust `mokutil --test-key` exit status alone: some installed
+    # versions print "is already enrolled" but return 1. Instead verify
+    # the exact DER certificate exists in shim's exported MokListRT.
+    mok_export_dir="$(mktemp -d)"
+    mok_match=0
+    if (cd "$mok_export_dir" && sudo mokutil --export >/dev/null); then
+        for exported_cert in "$mok_export_dir"/*.der; do
+            [[ -f "$exported_cert" ]] || continue
+            if sudo cmp -s /var/lib/shim-signed/mok/MOK.der "$exported_cert"; then
+                mok_match=1
+                break
+            fi
+        done
+    fi
+    sudo rm -rf -- "$mok_export_dir"
+    (( mok_match == 1 )) || {
+        echo 'Exact DKMS signing certificate was not found in enrolled MokListRT. Refusing unsigned/untrusted Xe.' >&2
+        exit 1
+    }
+    echo 'MOK verified: exact DER certificate is present in enrolled MokListRT.'
+
+    # Ensure the enrolled certificate corresponds to the private signing key.
+    mok_priv_pubhash=$(sudo openssl pkey -in /var/lib/shim-signed/mok/MOK.priv -pubout -outform DER | sha256sum | cut -d' ' -f1)
+    mok_cert_pubhash=$(openssl x509 -inform DER -in /var/lib/shim-signed/mok/MOK.der -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d' ' -f1)
+    [[ -n "$mok_priv_pubhash" && "$mok_priv_pubhash" == "$mok_cert_pubhash" ]] || {
+        echo 'Signing private key does not match the enrolled MOK certificate.' >&2
+        exit 1
+    }
+fi
+
+if [[ ! -d $REPO/.git ]]; then
+    git clone --depth 1 https://github.com/burakgon/zenbook-duo-2026-linux.git "$REPO"
+fi
+[[ -f "$REPO/modules/display-edp2-tcss/dkms/dkms.conf" ]] || {
+    echo 'Missing the verified upstream patch directory.' >&2; exit 1;
+}
+echo "Upstream commit: $(git -C "$REPO" rev-parse HEAD)"
+
+sudo install -d "$INSTALL_DIR"
+sudo cp -a "$REPO/modules/display-edp2-tcss/dkms/." "$INSTALL_DIR/"
+ADDED=1
+
+# Pin this unvalidated Ubuntu adaptation to the user's known kernel ABI;
+# a future Ubuntu kernel update must NOT auto-build the wrong driver source.
+sudo tee "$INSTALL_DIR/dkms.conf" >/dev/null <<'DKMS'
+PACKAGE_NAME="zenbook-duo-xe-ubuntu"
+PACKAGE_VERSION="1.3.0-u70038"
+BUILD_EXCLUSIVE_KERNEL="^7\\.0\\.0-38-generic$"
+MAKE[0]="bash ./build.sh ${kernelver} ${kernel_source_dir}"
+CLEAN="rm -rf src"
+BUILT_MODULE_NAME[0]="xe"
+BUILT_MODULE_LOCATION[0]="src/drivers/gpu/drm/xe"
+DEST_MODULE_LOCATION[0]="/updates/dkms"
+AUTOINSTALL="yes"
+DKMS
+
+# Use the *exact Ubuntu-patched* version of the Xe driver sources.
+# The upstream DKMS's own build.sh fetches vanilla v7.0, which is inappropriate
+# for Ubuntu's 7.0.0-38 ABI.
+sudo tee "$INSTALL_DIR/build.sh" >/dev/null <<'BUILD'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+kver="$1"; kdir="$2"
+[[ "$kver" == 7.0.0-38-generic ]] || exit 1
+[[ $(dpkg-query -W -f='${Version}' linux-source-7.0.0) == 7.0.0-38.38 ]] || exit 1
+here="$(cd "$(dirname "$0")" && pwd)"
+tarball=/usr/src/linux-source-7.0.0.tar.bz2
+rm -rf src
+mkdir -p src
+tar -xjf "$tarball" -C src --strip-components=1 \
+    linux-source-7.0.0/drivers/gpu/drm/xe \
+    linux-source-7.0.0/drivers/gpu/drm/i915
+[[ -f src/drivers/gpu/drm/xe/Makefile ]] || exit 1
+for p in "$here"/patches/*.patch; do
+    patch -d src -p1 --batch --forward < "$p"
+done
+# Ubuntu v7.0's register typedef differs from upstream's v7.2 patch.
+sed -i 's/intel_reg_t reg = XELPDP_PORT_BUF_CTL1/i915_reg_t reg = XELPDP_PORT_BUF_CTL1/' \
+    src/drivers/gpu/drm/i915/display/intel_tc.c
+cd src/drivers/gpu/drm
+sed -i 's|\$(srctree)/drivers/gpu/drm/i915/|$(src)/../i915/|g' xe/Makefile
+sed -i 's|^#define TRACE_INCLUDE_PATH \.\./\.\./drivers/gpu/drm/.*|#define TRACE_INCLUDE_PATH .|' \
+    xe/xe_trace*.h i915/display/intel_display_trace.h
+llvm=()
+if grep -q '^CONFIG_CC_IS_CLANG=y' "$kdir/.config"; then llvm=(LLVM=1); fi
+make -C "$kdir" M="$PWD/xe" "${llvm[@]}" -j4 modules
+BUILD
+sudo chmod +x "$INSTALL_DIR/build.sh"
+
+sudo dkms add -m "$NAME" -v "$VER"
+sudo dkms build -m "$NAME" -v "$VER" -k "$KREL"
+sudo dkms install -m "$NAME" -v "$VER" -k "$KREL"
+sudo depmod -a "$KREL"
+MODULE=$(modinfo -k "$KREL" -n xe)
+[[ "$MODULE" == *'/updates/dkms/'* ]] || {
+    echo "Driver selection did not prefer DKMS module: $MODULE" >&2; exit 1;
+}
+if mokutil --sb-state | grep -qi 'SecureBoot enabled'; then
+    [[ -n $(modinfo -F signer "$MODULE") ]] || {
+        echo 'Patched Xe module is unsigned. Refusing to update initramfs.' >&2; exit 1;
+    }
+fi
+
+sudo cp -a "/boot/initrd.img-$KREL" "/boot/initrd.img-$KREL.before-zenbook-xe"
+INITRD_TOUCHED=1
+sudo update-initramfs -u -k "$KREL"
+# Abort and roll back if the initramfs embeds the stock Xe rather than DKMS.
+# Ubuntu 26.04 Dracut creates a root-only (0600) initrd.
+# lsinitramfs invokes 3cpio to read it; run the reader with elevated rights.
+contents=$(sudo lsinitramfs "/boot/initrd.img-$KREL")
+stock_xe=$(printf '%s\n' "$contents" | grep -E '/kernel/drivers/gpu/drm/xe/xe\.ko(\.[[:alnum:]]+)?$' || true)
+patched_xe=$(printf '%s\n' "$contents" | grep -E '/updates/dkms/xe\.ko(\.[[:alnum:]]+)?$' || true)
+if [[ -z "$contents" ]]; then
+    echo "Initramfs inspection returned no file list." >&2
+    exit 1
+fi
+if [[ -n "$stock_xe" && -z "$patched_xe" ]]; then
+    echo 'Initramfs embeds stock Xe rather than the DKMS override.' >&2
+    exit 1
+fi
+INITRD_TOUCHED=0
+trap - EXIT
+printf '\nBuild/install finished.\nModule: %s\nSigner: %s\n' "$MODULE" "$(modinfo -F signer "$MODULE")"
+echo 'After a controlled reboot, verify:'
+echo '  modinfo -n xe'
+echo '  cat /sys/module/xe/parameters/zenbook_duo_edp2_tcss'
+echo '  dkms status zenbook-duo-xe-ubuntu'
+echo 'Keep the old Ubuntu kernel installed for recovery.'

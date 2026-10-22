@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# One-shot, fail-closed recovery for Intel PCIe Bluetooth on UX8407AA.
+set -Eeuo pipefail
+
+log() {
+  printf '%s\n' "$*"
+  logger -t zenbook-bt-recover -- "$*" || true
+}
+
+# Do not run on a different computer or different PCI controller.
+if [[ "$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)" != *UX8407AA* ]]; then
+  log 'Skipping: this is not a UX8407AA.'
+  exit 0
+fi
+if [[ ! -e /sys/bus/pci/devices/0000:00:14.7 ]] || \
+   [[ "$(cat /sys/bus/pci/devices/0000:00:14.7/vendor 2>/dev/null || true)" != 0x8086 ]] || \
+   [[ "$(cat /sys/bus/pci/devices/0000:00:14.7/device 2>/dev/null || true)" != 0xe476 ]]; then
+  log 'Skipping: expected Intel 8086:e476 controller is not present.'
+  exit 0
+fi
+
+exec 9>/run/zenbook-bt-recover.lock
+flock -n 9 || { log 'Another recovery check is running; skipping.'; exit 0; }
+
+controller_available() {
+  local listing
+  listing="$(timeout 5s bluetoothctl list 2>/dev/null || true)"
+  grep -Eq '^Controller[[:space:]]' <<< "$listing"
+}
+
+# This also prevents disrupting an already restored controller, even if old
+# error messages remain in the boot journal.
+if controller_available; then
+  log 'Healthy: BlueZ already has a controller; no action.'
+  exit 0
+fi
+
+sleep 3
+if controller_available; then
+  log 'Healthy after initialization delay; no action.'
+  exit 0
+fi
+
+# Do not reset hardware for unrelated reasons (missing bluetooth.service,
+# manually disabled adapter, missing firmware, etc.).
+if ! journalctl -k -b -o cat --no-pager 2>/dev/null | \
+  grep -F 'Intel Soft Reset failed (-62)' >/dev/null; then
+  log 'Controller unavailable, but no matching Intel reset failure this boot; no action.'
+  exit 0
+fi
+
+log 'Matching Intel reset failure and unavailable controller: attempting ONE module reload.'
+systemctl stop bluetooth.service
+if ! modprobe -r btintel_pcie; then
+  log 'FAILED: could not unload btintel_pcie. Restarting bluetooth service without forcing.'
+  systemctl start bluetooth.service || true
+  exit 1
+fi
+if ! modprobe btintel_pcie; then
+  log 'FAILED: could not reload btintel_pcie. Restarting bluetooth service.'
+  systemctl start bluetooth.service || true
+  exit 1
+fi
+systemctl start bluetooth.service
+
+for attempt in 1 2 3 4 5; do
+  sleep 2
+  if controller_available; then
+    log 'SUCCESS: Bluetooth controller recovered.'
+    exit 0
+  fi
+done
+log 'FAILED: one reload did not recover the controller; no additional retries.'
+exit 1
