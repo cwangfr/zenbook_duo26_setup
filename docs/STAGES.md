@@ -34,7 +34,7 @@ bash scripts/stages/53-rust-check.sh
 | 54 | Rust runtime 回归 | `bash scripts/stages/54-rust-tests.sh` | 编译并运行 `cargo test --locked --lib runtime::`，可能需要较长时间 |
 | 60 | 蓝牙已知错误手动恢复（可选） | `bash scripts/stages/60-bluetooth-recovery.sh --apply` | 仅无默认控制器且匹配已有 -62 故障；可能中断蓝牙 |
 | 90 | 最终只读检查 | `bash scripts/stages/90-final-check.sh` | 再做冷启动、键盘插拔、休眠/恢复等**人工验收** |
-| 99 | Xe 回滚（**不是安装步骤**） | `bash scripts/stages/99-xe-rollback.sh --apply` | 只能从安全 TTY/备用内核操作，保留原回滚脚本语义 |
+| 99 | Xe 回滚（**不是安装步骤**） | `bash scripts/stages/99-xe-rollback.sh --apply` | 必须先启动**另一个原装备用内核**，再从安全 TTY 操作，保留原回滚脚本语义 |
 
 除 00 外，进入本仓库的根目录再运行：`cd ~/zenbook_duo26_setup`。仓库尚未下载时先执行 `sudo apt install git`，`git clone https://github.com/cwangfr/zenbook_duo26_setup.git`。各阶段用 `bash` 启动，因此即使 GitHub checkout 的可执行位改变也可运行。
 
