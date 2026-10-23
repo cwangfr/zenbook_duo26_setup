@@ -155,6 +155,30 @@ v3 会备份 initrd、编译、DKMS 签名并更新当前内核 initramfs。原 
 
 ## 5. Rust 自动切屏：使用已经包含中文修复的提交
 
+### 5.0. 首次编译前补齐 Rust/Tauri 系统依赖
+
+**2026-10-23 重装时新增故障（尚待本机确认修复）：** 初次没有正确找到 Cargo；修复/重试后出现 `failed to run custom build command for gobject-sys v0.18.0`。查阅锁定上游 `Cargo.toml` 可知即使选择 `--skip-ui`，Rust 后台二进制构建仍经 Tauri 2 引入 GLib/GTK/WebKit 依赖。上游 `setup-gnome.sh` 没有安装完整开发依赖。错误标题只说明失败的 crate，**具体缺少哪个 `.pc` 或所需版本仍以完整 Cargo stderr 为准**。
+
+在普通用户 GNOME 终端先执行（只安装开发包，不修改 Xe、GDM、MOK）：
+
+```bash
+sudo apt update
+sudo apt install -y \
+  build-essential pkg-config libglib2.0-dev \
+  libgtk-3-dev libwebkit2gtk-4.1-dev \
+  libayatana-appindicator3-dev librsvg2-dev \
+  libssl-dev libxdo-dev file
+source "$HOME/.cargo/env"
+cargo --version
+pkg-config --modversion gobject-2.0
+pkg-config --modversion gtk+-3.0
+pkg-config --modversion webkit2gtk-4.1
+```
+
+如 `pkg-config` 有任何一项失败，先查缺失的对应 Ubuntu `-dev` 包；不建议继续盲目 Cargo 构建。若三项成功，再继续以下固定提交的 `./install.sh --skip-ui -- --no-usb-media-remap` 或直接重试 `./install-rust-runtime.sh`。不要使用 `sudo cargo build`、无需清理 `target`、无需重装 Xe DKMS。见 [分层排障：Cargo/gobject-sys](TROUBLESHOOTING.md#rust-cargo-gobject-sys-构建失败)。
+
+参照：[Tauri 2 官方 Linux prerequisites](https://v2.tauri.app/start/prerequisites/)。
+
 保持两块屏幕已经物理点亮、触点键盘拿开。先停止可能安装过的早期自建服务：
 
 ```bash
