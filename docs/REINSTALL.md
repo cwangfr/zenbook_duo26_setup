@@ -10,7 +10,51 @@
 
 ASUS USB 启动及 Win11 恢复是独立事项，见 [USB-WINDOWS](USB-WINDOWS.md)。
 
-## 1. 初始显示：先有一个可用桌面
+## 0.5. LiveUSB 安装界面上下倒置：在开始安装前临时旋转
+
+**这是「Try Ubuntu」Live 会话阶段的操作，不是安装完成后执行的持久双屏配置。** 本机在 2026-10-21 安装 Ubuntu 26.04.1 的记录为：Live USB 初始上屏画面倒置、当时只显示一块屏；安装后才继续识别和配置两块屏。原会话当时提供过 GNOME 设置界面的临时修正方法；以下 `gdctl` 单屏命令则是根据安装后已经验证的语法整理的**备用方法，未单独在 LiveUSB 实机验收**。
+
+1. 完全关机，先把触点键盘从下屏移开再启动 LiveUSB（**修复 Xe 之前不要以键盘盖着下屏的状态测试冷启动**）；准备有线 USB 键盘/鼠标，防止蓝牙和触屏方向影响操作。正常进入 Ubuntu Live 桌面，若自动出现安装器，先返回桌面或暂时最小化安装器。
+2. 虽然屏幕上下反转，仍可按 **Ctrl+Alt+T** 打开终端，运行：
+
+```bash
+gnome-control-center display
+```
+
+3. 在 **Settings → Displays（设置 → 显示）** 中选择当前发光的**物理上屏**，将方向（Orientation）设置为 **Landscape (flipped)**（横向翻转，即 180°），点击 **Apply**，再点 **Keep Changes** 确认。屏幕转正后回到安装器，正常安装 Ubuntu。**不要只因为 GNOME 显示器编号是 1/2 就推断它对应 eDP-1/eDP-2。**
+4. 如果 Live 桌面没有提供该 GUI 选项，并且当前确实进入 **GNOME Wayland 会话**、`gdctl show` 可运行、输出显示 **eDP-1 就是当前唯一有效的上屏**，可使用以下备用命令。执行前先只读核对：
+
+```bash
+echo "$XDG_SESSION_TYPE"
+command -v gdctl
+gdctl show
+```
+
+确认无误后，**先 verify、再实际设置**；如检查失败就停止，不要尝试强制点亮下屏：
+
+```bash
+gdctl set --verify \
+  --logical-monitor --primary --monitor eDP-1 \
+  --transform 180 --scale 1.6666666269302368
+
+gdctl set \
+  --logical-monitor --primary --monitor eDP-1 \
+  --transform 180 --scale 1.6666666269302368
+```
+
+这组备用命令只调整当前 Live 会话的单个逻辑显示器：**不加入 eDP-2、不使用 `--persistent`、不写 `monitors.xml`、不修改 GDM/GRUB/内核参数**。如果 `gdctl` 不存在、会话不是 GNOME Wayland、输出和当前硬件不一致，跳过此方法，使用 GUI 或外接屏/鼠标继续安装，不要猜测接口名称。
+
+5. **LiveUSB 中的屏幕方向是临时设置**：重启、结束 Live 会话或切入正式安装系统后一般不保留。安装完成进入真正的 Ubuntu GNOME 桌面后，再继续下文 **第 1 节**做正式持久配置；**不要把 LiveUSB 的单屏配置复制给 GDM**。
+
+### 安装期禁止事项
+
+- 不要为了让安装界面转正加入 `video=eDP-1:panel_orientation=upside_down`、`fbcon=rotate` 等未经当前基线验证的启动参数；之前将内核 panel orientation 与 GNOME 180° 同时使用曾出现双重旋转。
+- **不要在未加载 Xe TCSS 补丁的 LiveUSB 里反复强制开启 eDP-2**。此次要求只是让安装界面可操作，未在安装期解决下屏冷启动。
+- 如果出现桌面冻结、`gdctl` 超时、面板黑屏，不继续反复 modeset。先保证可用的 Live 上屏和安装数据安全，必要时重新以键盘移开的状态启动 LiveUSB。
+
+参考：正式 GNOME 双屏命令见下一节；LiveUSB 启动入口另见 [USB-WINDOWS](USB-WINDOWS.md)。
+
+## 1. 安装完成后的初始显示：先有一个可用桌面
 
 未打补丁前，键盘拿开后开机，准备 USB 键盘/鼠标。Live USB 当时只显示一块屏，安装后才两块；GNOME 的数字编号不能当作 eDP 接口编号。
 
