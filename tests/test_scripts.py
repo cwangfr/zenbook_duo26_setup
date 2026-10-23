@@ -30,6 +30,20 @@ class ScriptTests(unittest.TestCase):
         for p in list((ROOT/'scripts').rglob('*.sh'))+list((ROOT/'optional').rglob('*.sh')):
             self.assertIsNone(pattern.search(p.read_text()),str(p))
 
+    def test_staged_installers_are_guarded(self):
+        stages=ROOT/'scripts/stages'
+        required=('20-fetch-sources.sh','30-wmi-install.sh','31-mok-enroll.sh',
+                  '40-xe-install.sh','50-rust-deps.sh','51-rust-full-install.sh',
+                  '52-rust-resume-only.sh','60-bluetooth-recovery.sh','99-xe-rollback.sh')
+        for name in required:
+            body=(stages/name).read_text()
+            self.assertIn('need_apply "$@"',body,name)
+            self.assertNotIn('sudo cargo',body,name)
+        for name in ('51-rust-full-install.sh','52-rust-resume-only.sh'):
+            self.assertIn('need_runtime_pin', (stages/name).read_text())
+        self.assertIn('7.0.0-38-generic', (stages/'40-xe-install.sh').read_text())
+        self.assertIn('fallback kernel', (stages/'99-xe-rollback.sh').read_text())
+
     def test_no_private_key_material(self):
         pattern=re.compile(rb'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----')
         for p in ROOT.rglob('*'):
