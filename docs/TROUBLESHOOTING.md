@@ -88,6 +88,22 @@ sudo grep -RnsE 'panel_orientation|fbcon=rotate|video=eDP|rotate=180' \
 
 备份找到的实际配置，只撤销本次添加的`video=eDP-1:panel_orientation=upside_down`，保留背光参数，再`sudo update-grub`，人工重启。不要编辑生成的grub.cfg，也不要删其他video配置。fbcon=rotate主要影响文本控制台，不能直接当同一根因。
 
+## Rust Cargo / gobject-sys 构建失败
+
+2026-10-23 安装阶段报告 `Cargo is still unavailable`，随后 `failed to run custom build command for gobject-sys v0.18.0`。二者是不同阶段的问题：前者涉及 Rust 工具链/PATH/目标用户；后者通常涉及系统 pkg-config 与 GLib/GTK 库，但需要 Cargo 的 `--- stderr` 确诊。
+
+```bash
+whoami
+command -v cargo
+cargo --version
+pkg-config --modversion glib-2.0 gobject-2.0 gtk+-3.0 webkit2gtk-4.1
+dpkg-query -W pkg-config libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev 2>&1
+```
+
+没有找到 `gobject-2.0.pc` 时优先安装 `pkg-config libglib2.0-dev`；因该项目 `Cargo.toml` 依赖 Tauri 2 且选择 `--skip-ui` 也会编译相关 crate，参照 [重装第 5.0 节](REINSTALL.md#50-首次编译前补齐-rusttauri-系统依赖) 安装其余官方 Linux 开发依赖。修复后在**同一个普通用户**会话下重新运行安装器，不使用 `sudo cargo build`；已有成功构建的依赖会由 Cargo 复用。
+
+若 pkg-config 均成功仍失败，应保留完整 `--- stdout` 与 `--- stderr`、crate 版本、`pkg-config` 输出，不要只用顶层一句 `failed to run custom build command` 推断原因。这里的解决方案目前是源码分析与官方文档依据，**尚未收到这次重装的成功验收回报**。
+
 ## 服务/权限/初始化
 
 ```bash
