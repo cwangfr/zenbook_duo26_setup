@@ -14,7 +14,7 @@ if ! cargo --version >/dev/null 2>&1; then
   curl --fail --location --show-error --silent --proto '=https' --tlsv1.2 https://sh.rustup.rs -o "$t/rustup-init.sh"
   sh "$t/rustup-init.sh" -y
   export PATH="$HOME/.cargo/bin:$PATH"
-  [[ -r "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
+  if [[ -r "$HOME/.cargo/env" ]]; then source "$HOME/.cargo/env"; fi
 fi
 cargo --version
 rustc --version
